@@ -64,7 +64,6 @@ const resetLeanBtn = document.getElementById('resetLeanBtn');
 const clearBtn = document.getElementById('clearBtn');
 const rawToggle = document.getElementById('rawToggle');
 const displayRateSelect = document.getElementById('displayRateSelect');
-const rateDebugEl = document.getElementById('rateDebug');
 
 let displayIntervalMs = Number(displayRateSelect.value);
 let lastDisplayMs = -Infinity;
@@ -72,17 +71,6 @@ let lastDisplayMs = -Infinity;
 displayRateSelect.addEventListener('change', () => {
   displayIntervalMs = Number(displayRateSelect.value);
 });
-
-// On-page counter (not just console) so this is visible even on machines
-// where DevTools is locked down -- shows whether the throttle is actually
-// cutting the render rate down from the raw notification rate.
-let notifsThisSecond = 0;
-let rendersThisSecond = 0;
-setInterval(() => {
-  rateDebugEl.textContent = `notifs/s: ${notifsThisSecond}  renders/s: ${rendersThisSecond}  (interval: ${displayIntervalMs}ms)`;
-  notifsThisSecond = 0;
-  rendersThisSecond = 0;
-}, 1000);
 
 rawToggle.addEventListener('change', () => {
   rawLogEl.classList.toggle('hidden', !rawToggle.checked);
@@ -145,7 +133,6 @@ function onDisconnected() {
 function onNotification(event) {
   const characteristic = event.target;
   const dataView = characteristic.value;
-  notifsThisSecond++;
 
   // Decoding always runs on every notification -- the detection algorithms
   // (cadence, GCT, balance, lean) need every raw sample to work correctly.
@@ -157,7 +144,6 @@ function onNotification(event) {
   const now = Date.now();
   if (now - lastDisplayMs < displayIntervalMs) return;
   lastDisplayMs = now;
-  rendersThisSecond++;
 
   if (rawToggle.checked) {
     appendRaw(characteristic.uuid, dataView);
