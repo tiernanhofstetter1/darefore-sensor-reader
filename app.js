@@ -80,13 +80,14 @@ rawToggle.addEventListener('change', () => {
 // Recorded at full decode rate, independent of the display throttle above --
 // slowing down what's shown on screen shouldn't cost you resolution in the
 // exported data.
-const RECORDED_COLUMNS = ['t_ms', 'hr', 'cad', 'gct', 'vo', 'speed', 'sl', 'lean', 'bal'];
+const RECORDED_COLUMNS = ['datetime', 't_ms', 'hr', 'cad', 'gct', 'vo', 'speed', 'sl', 'lean', 'bal'];
 let recordedRows = [];
 let recordStartMs = null;
 
 function recordRow(m) {
-  if (recordStartMs === null) recordStartMs = Date.now();
-  recordedRows.push({ t_ms: Date.now() - recordStartMs, ...m });
+  const now = Date.now();
+  if (recordStartMs === null) recordStartMs = now;
+  recordedRows.push({ datetime: formatTimestamp(new Date(now)), t_ms: now - recordStartMs, ...m });
 }
 
 clearBtn.addEventListener('click', () => {
@@ -602,6 +603,12 @@ function formatValue(value, unit, decimals) {
   return value + (unit || '');
 }
 
+function formatTimestamp(date) {
+  const pad = (n, len = 2) => String(n).padStart(len, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} `
+    + `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}.${pad(date.getMilliseconds(), 3)}`;
+}
+
 function formatSigned(value, decimals) {
   if (value === null || value === undefined) return '—';
   const sign = value >= 0 ? '+' : '';
@@ -622,7 +629,7 @@ function formatRow(m) {
 }
 
 function appendRow(m) {
-  logEl.textContent += formatRow(m) + '\n';
+  logEl.textContent += `${formatTimestamp(new Date())}  ${formatRow(m)}\n`;
   logEl.scrollTop = logEl.scrollHeight;
   setStatus('connected — cadence is experimental; gct/vo/speed/sl/lean/bal need the still-locked 0xFDF3 channel');
 }
