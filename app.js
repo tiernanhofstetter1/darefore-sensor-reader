@@ -60,6 +60,7 @@ const statusEl = document.getElementById('status');
 const logEl = document.getElementById('log');
 const rawLogEl = document.getElementById('rawLog');
 const connectBtn = document.getElementById('connectBtn');
+const resetLeanBtn = document.getElementById('resetLeanBtn');
 const clearBtn = document.getElementById('clearBtn');
 const rawToggle = document.getElementById('rawToggle');
 
@@ -73,6 +74,7 @@ clearBtn.addEventListener('click', () => {
 });
 
 connectBtn.addEventListener('click', connect);
+resetLeanBtn.addEventListener('click', resetLeanBaseline);
 
 async function connect() {
   try {
@@ -287,16 +289,46 @@ function computeStrideLengthMm(speedMps, cadSpm) {
 // Darefore's own calibration, so this is a relative lean, not an absolute one).
 const LEAN_AXIS_1_OFFSET = 10;
 const LEAN_AXIS_2_OFFSET = 14;
+const LEAN_BASELINE_SAMPLES = 20; // averaged together whenever the baseline is (re)calibrated
 
 let leanBaselineDeg = null;
+let leanCalibrating = true; // collecting samples toward a new baseline right now
+let leanCalibrationSamples = [];
+
+// Angles wrap at +-180 degrees, so a plain arithmetic mean of raw samples
+// straddling that wrap (e.g. 179 and -179) would average to ~0 instead of
+// ~180. Averaging each sample's sin/cos and taking atan2 of the sums handles
+// the wraparound correctly.
+function circularMeanDeg(anglesDeg) {
+  let sumSin = 0;
+  let sumCos = 0;
+  for (const deg of anglesDeg) {
+    const rad = (deg * Math.PI) / 180;
+    sumSin += Math.sin(rad);
+    sumCos += Math.cos(rad);
+  }
+  return (Math.atan2(sumSin, sumCos) * 180) / Math.PI;
+}
+
+// Re-arms baseline calibration so the next LEAN_BASELINE_SAMPLES readings
+// become the new "zero lean" orientation -- lets the user recenter mid-run
+// without disconnecting.
+function resetLeanBaseline() {
+  leanCalibrating = true;
+  leanCalibrationSamples = [];
+}
 
 function decodeLeanFromRawAccel(dv) {
   const a1 = dv.getFloat32(LEAN_AXIS_1_OFFSET, true);
   const a2 = dv.getFloat32(LEAN_AXIS_2_OFFSET, true);
   const angleDeg = (Math.atan2(a2, a1) * 180) / Math.PI;
 
-  if (leanBaselineDeg === null) {
-    leanBaselineDeg = angleDeg;
+  if (leanCalibrating) {
+    leanCalibrationSamples.push(angleDeg);
+    if (leanCalibrationSamples.length >= LEAN_BASELINE_SAMPLES) {
+      leanBaselineDeg = circularMeanDeg(leanCalibrationSamples);
+      leanCalibrating = false;
+    }
     return { lean: 0 };
   }
 
@@ -316,7 +348,10 @@ function decodeLeanFromRawAccel(dv) {
 // shorter ground contact at higher pace is exactly the expected real-world
 // relationship, which is about as good a validation as we can get without a
 // force plate or slow-motion video to check exact values against.
-const GCT_THRESHOLD = 8.0;   // m/s^2 magnitude marking "foot down"
+const GCT_FALLBACK_THRESHOLD = 8.0; // used only when there's not enough recent signal variation to adapt
+const GCT_THRESHOLD_FRACTION = 0.4; // where between recent quiet/impact magnitude to draw the line
+const GCT_RANGE_WINDOW = 60;        // samples used to compute the dynamic threshold
+const GCT_MIN_ABSOLUTE_RANGE = 5;   // below this, fall back to the fixed threshold instead of trusting noise
 const GCT_MIN_MS = 80;       // ignore blips shorter than this as noise
 const GCT_MAX_MS = 500;      // real GCT is never this long -- reject as a bad detection
 const GCT_STALE_MS = 2000;   // no new stance counted in this long -> report unknown
@@ -326,6 +361,7 @@ let gctInStance = false;
 let gctStanceStartMs = null;
 let gctHistory = [];
 let gctLastStanceEndMs = -Infinity;
+let gctMagBuffer = [];
 
 function decodeGctFromRawAccel(dv, nowMs) {
   const ax = dv.getFloat32(6, true);
@@ -333,7 +369,20 @@ function decodeGctFromRawAccel(dv, nowMs) {
   const az = dv.getFloat32(14, true);
   const mag = Math.sqrt(ax * ax + ay * ay + az * az);
 
-  const above = mag > GCT_THRESHOLD;
+  // Dynamic threshold (same idea as cadence's): adapts to whatever quiet/impact
+  // range this specific session actually shows -- different strap tightness,
+  // running surface, or intensity all shift the real magnitudes involved, so a
+  // single hardcoded number tuned to our own test sessions won't generalize as
+  // well as recalibrating against recent history.
+  gctMagBuffer.push(mag);
+  if (gctMagBuffer.length > GCT_RANGE_WINDOW) gctMagBuffer.shift();
+  const recentMin = Math.min(...gctMagBuffer);
+  const recentMax = Math.max(...gctMagBuffer);
+  const threshold = recentMax - recentMin >= GCT_MIN_ABSOLUTE_RANGE
+    ? recentMin + (recentMax - recentMin) * GCT_THRESHOLD_FRACTION
+    : GCT_FALLBACK_THRESHOLD;
+
+  const above = mag > threshold;
   if (above && !gctInStance) {
     gctInStance = true;
     gctStanceStartMs = nowMs;
@@ -453,8 +502,10 @@ function decodeBalanceFromRawAccel(dv, nowMs) {
     balanceInStance = true;
     if (balanceSegment.length > 0 && balanceStanceStartMs !== null) {
       const duration = nowMs - balanceStanceStartMs;
-      const peak = balanceSegment.reduce((best, v) => (Math.abs(v) > Math.abs(best) ? v : best), 0);
-      const side = peak >= 0 ? 'A' : 'B';
+      // Mean of the whole stride segment instead of a single peak sample --
+      // far less sensitive to one noisy reading flipping the classification.
+      const mean = balanceSegment.reduce((a, v) => a + v, 0) / balanceSegment.length;
+      const side = mean >= 0 ? 'A' : 'B';
       if (duration >= BALANCE_MIN_MS && duration <= BALANCE_MAX_MS) {
         balanceHistory.push({ side, duration });
         if (balanceHistory.length > BALANCE_HISTORY_SIZE) balanceHistory.shift();
