@@ -62,6 +62,7 @@ const rawLogEl = document.getElementById('rawLog');
 const connectBtn = document.getElementById('connectBtn');
 const resetLeanBtn = document.getElementById('resetLeanBtn');
 const clearBtn = document.getElementById('clearBtn');
+const downloadBtn = document.getElementById('downloadBtn');
 const rawToggle = document.getElementById('rawToggle');
 const displayRateSelect = document.getElementById('displayRateSelect');
 
@@ -76,9 +77,41 @@ rawToggle.addEventListener('change', () => {
   rawLogEl.classList.toggle('hidden', !rawToggle.checked);
 });
 
+// Recorded at full decode rate, independent of the display throttle above --
+// slowing down what's shown on screen shouldn't cost you resolution in the
+// exported data.
+const RECORDED_COLUMNS = ['t_ms', 'hr', 'cad', 'gct', 'vo', 'speed', 'sl', 'lean', 'bal'];
+let recordedRows = [];
+let recordStartMs = null;
+
+function recordRow(m) {
+  if (recordStartMs === null) recordStartMs = Date.now();
+  recordedRows.push({ t_ms: Date.now() - recordStartMs, ...m });
+}
+
 clearBtn.addEventListener('click', () => {
   logEl.textContent = '';
   rawLogEl.textContent = '';
+  recordedRows = [];
+  recordStartMs = null;
+});
+
+downloadBtn.addEventListener('click', () => {
+  if (recordedRows.length === 0) {
+    setStatus('nothing recorded yet -- connect and collect some data first');
+    return;
+  }
+  const lines = [RECORDED_COLUMNS.join(',')];
+  for (const row of recordedRows) {
+    lines.push(RECORDED_COLUMNS.map((col) => (row[col] ?? '')).join(','));
+  }
+  const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `darefore-data-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 });
 
 connectBtn.addEventListener('click', connect);
@@ -140,6 +173,7 @@ function onNotification(event) {
   // the underlying data quality.
   const updates = decode(characteristic.uuid, dataView);
   Object.assign(metrics, updates);
+  recordRow(metrics);
 
   const now = Date.now();
   if (now - lastDisplayMs < displayIntervalMs) return;
