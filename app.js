@@ -63,6 +63,14 @@ const connectBtn = document.getElementById('connectBtn');
 const resetLeanBtn = document.getElementById('resetLeanBtn');
 const clearBtn = document.getElementById('clearBtn');
 const rawToggle = document.getElementById('rawToggle');
+const displayRateSelect = document.getElementById('displayRateSelect');
+
+let displayIntervalMs = Number(displayRateSelect.value);
+let lastDisplayMs = -Infinity;
+
+displayRateSelect.addEventListener('change', () => {
+  displayIntervalMs = Number(displayRateSelect.value);
+});
 
 rawToggle.addEventListener('change', () => {
   rawLogEl.classList.toggle('hidden', !rawToggle.checked);
@@ -126,12 +134,20 @@ function onNotification(event) {
   const characteristic = event.target;
   const dataView = characteristic.value;
 
+  // Decoding always runs on every notification -- the detection algorithms
+  // (cadence, GCT, balance, lean) need every raw sample to work correctly.
+  // Only the on-screen log is throttled, so slowing it down can't affect
+  // the underlying data quality.
+  const updates = decode(characteristic.uuid, dataView);
+  Object.assign(metrics, updates);
+
+  const now = Date.now();
+  if (now - lastDisplayMs < displayIntervalMs) return;
+  lastDisplayMs = now;
+
   if (rawToggle.checked) {
     appendRaw(characteristic.uuid, dataView);
   }
-
-  const updates = decode(characteristic.uuid, dataView);
-  Object.assign(metrics, updates);
   appendRow(metrics);
 }
 
