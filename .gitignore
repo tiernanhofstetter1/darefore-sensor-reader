@@ -1,0 +1,23 @@
+# Local tooling config -- not part of the project
+.claude/
+
+# Third-party decompiled app -- not ours to publish
+app_analysis/
+
+# Large personal recordings / raw capture data -- not needed for the deployed site
+*.MP4
+*.mp4
+f0f0_capture*.csv
+frames_tmp/
+
+# Temporary test/validation data generated during development
+gct_test_data.json
+speed_test_data.json
+balance_test_data.json
+ocr_output*.txt
+ocr_test.png
+ocr_lean_v1.txt
+
+# Python
+__pycache__/
+*.pyc

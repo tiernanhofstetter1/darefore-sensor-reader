@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Darefore Sensor Reader</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>Darefore Sensor Reader</h1>
+    <div id="status">disconnected</div>
+    <div class="controls">
+      <button id="connectBtn">Connect</button>
+      <button id="clearBtn">Clear</button>
+      <label><input type="checkbox" id="rawToggle" /> show raw notifications</label>
+    </div>
+  </header>
+
+  <main>
+    <pre id="log"></pre>
+    <pre id="rawLog" class="hidden"></pre>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
