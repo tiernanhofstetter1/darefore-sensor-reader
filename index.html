@@ -14,6 +14,17 @@
       <button id="resetLeanBtn">Reset Lean</button>
       <button id="clearBtn">Clear</button>
       <button id="downloadBtn">Download CSV</button>
+      <label>
+        record for
+        <select id="recordDurationSelect">
+          <option value="30">30s</option>
+          <option value="60" selected>1 min</option>
+          <option value="300">5 min</option>
+          <option value="600">10 min</option>
+          <option value="1800">30 min</option>
+        </select>
+      </label>
+      <button id="timedRecordBtn">Start Timed Recording</button>
       <label><input type="checkbox" id="rawToggle" /> show raw notifications</label>
       <label>
         display rate

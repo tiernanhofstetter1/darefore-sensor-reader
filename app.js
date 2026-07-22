@@ -63,6 +63,8 @@ const connectBtn = document.getElementById('connectBtn');
 const resetLeanBtn = document.getElementById('resetLeanBtn');
 const clearBtn = document.getElementById('clearBtn');
 const downloadBtn = document.getElementById('downloadBtn');
+const recordDurationSelect = document.getElementById('recordDurationSelect');
+const timedRecordBtn = document.getElementById('timedRecordBtn');
 const rawToggle = document.getElementById('rawToggle');
 const displayRateSelect = document.getElementById('displayRateSelect');
 
@@ -97,7 +99,7 @@ clearBtn.addEventListener('click', () => {
   recordStartMs = null;
 });
 
-downloadBtn.addEventListener('click', () => {
+function downloadCsv() {
   if (recordedRows.length === 0) {
     setStatus('nothing recorded yet -- connect and collect some data first');
     return;
@@ -113,6 +115,46 @@ downloadBtn.addEventListener('click', () => {
   a.download = `darefore-data-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+downloadBtn.addEventListener('click', downloadCsv);
+
+// Timed recording: clears any existing recording, then auto-stops and
+// auto-downloads once the chosen duration elapses -- recordRow() itself
+// still records unconditionally, so this just bookends a clean window and
+// saves having to babysit the clock and click Download at the right moment.
+let timedRecordEndMs = null;
+let timedRecordIntervalId = null;
+
+function stopTimedRecording(shouldDownload) {
+  clearInterval(timedRecordIntervalId);
+  timedRecordIntervalId = null;
+  timedRecordEndMs = null;
+  timedRecordBtn.textContent = 'Start Timed Recording';
+  if (shouldDownload) downloadCsv();
+}
+
+timedRecordBtn.addEventListener('click', () => {
+  if (timedRecordEndMs !== null) {
+    stopTimedRecording(false);
+    setStatus('timed recording cancelled');
+    return;
+  }
+
+  const durationSec = Number(recordDurationSelect.value);
+  recordedRows = [];
+  recordStartMs = null;
+  timedRecordEndMs = Date.now() + durationSec * 1000;
+  timedRecordBtn.textContent = `Recording… ${durationSec}s left (click to cancel)`;
+  timedRecordIntervalId = setInterval(() => {
+    const remainingMs = timedRecordEndMs - Date.now();
+    if (remainingMs <= 0) {
+      stopTimedRecording(true);
+      setStatus('timed recording complete -- CSV downloaded');
+      return;
+    }
+    timedRecordBtn.textContent = `Recording… ${Math.ceil(remainingMs / 1000)}s left (click to cancel)`;
+  }, 250);
 });
 
 connectBtn.addEventListener('click', connect);
